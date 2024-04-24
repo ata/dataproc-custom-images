@@ -90,6 +90,7 @@ function main() {{
       {service_account_flag} \
       --scopes=cloud-platform \
       {metadata_flag} \
+      --tags vidio-bigdata-dataproc,vidio-bigdata,private,private-sg,vidio-bigdata-prod \
       --metadata-from-file startup-script=startup_script/run.sh
   touch /tmp/{run_id}/vm_created
 
