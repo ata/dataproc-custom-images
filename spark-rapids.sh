@@ -251,48 +251,52 @@ function install_nvidia_gpu_driver() {
 
     execute_with_retries "apt-get install -y -q 'linux-headers-$(uname -r)'"
 
-    # readonly LOCAL_INSTALLER_DEB="cuda-repo-ubuntu1804-${CUDA_VERSION_MAJOR//./-}-local_${CUDA_VERSION}-${NVIDIA_DRIVER_VERSION}-1_amd64.deb"
-    # curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
-    #   "https://developer.download.nvidia.com/compute/cuda/${CUDA_VERSION}/local_installers/${LOCAL_INSTALLER_DEB}" -o /tmp/local-installer.deb
-    #
-    # dpkg -i /tmp/local-installer.deb
-    # cp /var/cuda-repo-ubuntu1804-${CUDA_VERSION_MAJOR//./-}-local/cuda-*-keyring.gpg /usr/share/keyrings/
+    if [[ ${DEBIAN_VERSION} != 10 ]]; then
+        readonly LOCAL_INSTALLER_DEB="cuda-repo-debian${DEBIAN_VERSION}-${CUDA_VERSION_MAJOR//./-}-local_${CUDA_VERSION}-${NVIDIA_DRIVER_VERSION}-1_amd64.deb"
+        curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
+          "https://developer.download.nvidia.com/compute/cuda/${CUDA_VERSION}/local_installers/${LOCAL_INSTALLER_DEB}" -o /tmp/local-installer.deb
 
-    ## EXCEPTION
-    if [[ ${DEBIAN_VERSION} == 12 ]]; then
-      sed -i '0,/Components: main/s//& contrib/' /etc/apt/sources.list.d/debian.sources
+        dpkg -i /tmp/local-installer.deb
+        cp /var/cuda-repo-debian${DEBIAN_VERSION}-${CUDA_VERSION_MAJOR//./-}-local/cuda-*-keyring.gpg /usr/share/keyrings/
+
+
+        ## EXCEPTION
+        if [[ ${DEBIAN_VERSION} == 12 ]]; then
+          sed -i '0,/Components: main/s//& contrib/' /etc/apt/sources.list.d/debian.sources
+        fi
+
+        add-apt-repository contrib
+        execute_with_retries "apt-get update"
+
+        # EXCEPTION
+        if [[ ${DEBIAN_VERSION} == 12 ]]; then
+          execute_with_retries "apt-get install -y -q nvidia-kernel-open-dkms"
+        fi
+
+        execute_with_retries "apt-get install -y -q --no-install-recommends cuda-drivers-${NVIDIA_DRIVER_VERSION_PREFIX}"
+        execute_with_retries "apt-get install -y -q --no-install-recommends cuda-toolkit-${CUDA_VERSION_MAJOR//./-}"
     fi
 
-    add-apt-repository contrib
-    execute_with_retries "apt-get update"
 
-    ## EXCEPTION
+
+
     if [[ ${DEBIAN_VERSION} == 10 ]]; then
-      apt remove -y libglvnd0
-      apt install -y ca-certificates-java
+        apt remove -y libglvnd0
+        apt install -y ca-certificates-java
+
+        curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
+          "${NVIDIA_UBUNTU_REPO_KEY_PACKAGE}" -o /tmp/cuda-keyring.deb
+        dpkg -i "/tmp/cuda-keyring.deb"
+
+        curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
+          "${NVIDIA_DEBIAN_GPU_DRIVER_URL}" -o driver.run
+        bash "./driver.run" --silent --install-libglvnd
+
+        curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
+          "${NVIDIA_DEBIAN_CUDA_URL}" -o cuda.run
+        bash "./cuda.run" --silent --toolkit --no-opengl-libs
     fi
 
-    ## EXCEPTION
-    # if [[ ${DEBIAN_VERSION} == 12 ]]; then
-    #   execute_with_retries "apt-get install -y -q nvidia-kernel-open-dkms"
-    # fi
-    #
-    # execute_with_retries "apt-get install -y -q --no-install-recommends cuda-drivers-${NVIDIA_DRIVER_VERSION_PREFIX}"
-    # execute_with_retries "apt-get install -y -q --no-install-recommends cuda-toolkit-${CUDA_VERSION_MAJOR//./-}"
-
-
-
-    curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
-      "${NVIDIA_UBUNTU_REPO_KEY_PACKAGE}" -o /tmp/cuda-keyring.deb
-    dpkg -i "/tmp/cuda-keyring.deb"
-
-    curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
-      "${NVIDIA_DEBIAN_GPU_DRIVER_URL}" -o driver.run
-    bash "./driver.run" --silent --install-libglvnd
-
-    curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
-      "${NVIDIA_DEBIAN_CUDA_URL}" -o cuda.run
-    bash "./cuda.run" --silent --toolkit --no-opengl-libs
 
     # enable a systemd service that updates kernel headers after reboot
     setup_systemd_update_headers
