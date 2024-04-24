@@ -76,6 +76,61 @@ if [[ "${OS_NAME}" == "debian" ]]; then
     fi
 fi
 
+# CUDA version and Driver version
+# https://docs.nvidia.com/deeplearning/frameworks/support-matrix/index.html
+readonly -A DRIVER_FOR_CUDA=([10.1]="418.88"    [10.2]="440.64.00"
+          [11.0]="450.51.06" [11.1]="455.45.01" [11.2]="460.73.01"
+          [11.5]="495.29.05" [11.6]="510.47.03" [11.7]="515.65.01"
+          [11.8]="520.56.06")
+readonly -A CUDNN_FOR_CUDA=( [10.1]="7.6.4.38"  [10.2]="7.6.5.32"
+          [11.0]="8.0.4.30"  [11.1]="8.0.5.39"  [11.2]="8.1.1.33"
+          [11.5]="8.3.3.40"  [11.6]="8.4.1.50"  [11.7]="8.5.0.96"
+          [11.8]="8.6.0.163")
+readonly -A NCCL_FOR_CUDA=(  [10.1]="2.4.8"     [10.2]="2.5.6"
+          [11.0]="2.7.8"     [11.1]="2.8.3"     [11.2]="2.8.3"
+          [11.5]="2.11.4"    [11.6]="2.11.4"    [11.7]="2.12.12"
+          [11.8]="2.15.5")
+readonly -A CUDA_SUBVER=(    [10.1]="10.1.243"  [10.2]="10.2.89"
+          [11.0]="11.0.3"    [11.1]="11.1.0"    [11.2]="11.2.2"
+          [11.5]="11.5.2"    [11.6]="11.6.2"    [11.7]="11.7.1"
+          [11.8]="11.8.0")
+
+
+readonly DEFAULT_NVIDIA_DEBIAN_GPU_DRIVER_VERSION=${DRIVER_FOR_CUDA["${CUDA_VERSION_MAJOR}"]}
+readonly NVIDIA_DEBIAN_GPU_DRIVER_VERSION=$(get_metadata_attribute 'gpu-driver-version' ${DEFAULT_NVIDIA_DEBIAN_GPU_DRIVER_VERSION})
+readonly NVIDIA_DEBIAN_GPU_DRIVER_VERSION_PREFIX=${NVIDIA_DEBIAN_GPU_DRIVER_VERSION%%.*}
+
+#Parameters for NVIDIA-provided Debian GPU driver
+DEFAULT_NVIDIA_DEBIAN_GPU_DRIVER_URL="https://download.nvidia.com/XFree86/Linux-x86_64/${NVIDIA_DEBIAN_GPU_DRIVER_VERSION}/NVIDIA-Linux-x86_64-${NVIDIA_DEBIAN_GPU_DRIVER_VERSION}.run"
+if [[ "$(curl -s -I ${DEFAULT_NVIDIA_DEBIAN_GPU_DRIVER_URL} | head -1 | awk '{print $2}')" != "200" ]]; then
+  DEFAULT_NVIDIA_DEBIAN_GPU_DRIVER_URL="https://download.nvidia.com/XFree86/Linux-x86_64/${NVIDIA_DEBIAN_GPU_DRIVER_VERSION%.*}/NVIDIA-Linux-x86_64-${NVIDIA_DEBIAN_GPU_DRIVER_VERSION%.*}.run"
+fi
+readonly DEFAULT_NVIDIA_DEBIAN_GPU_DRIVER_URL
+
+NVIDIA_DEBIAN_GPU_DRIVER_URL=$(get_metadata_attribute 'gpu-driver-url' "${DEFAULT_NVIDIA_DEBIAN_GPU_DRIVER_URL}")
+readonly NVIDIA_DEBIAN_GPU_DRIVER_URL
+
+readonly NVIDIA_BASE_DL_URL='https://developer.download.nvidia.com/compute'
+
+
+readonly NVIDIA_UBUNTU_REPO_URL="${NVIDIA_BASE_DL_URL}/cuda/repos/ubuntu1804/x86_64"
+readonly NVIDIA_UBUNTU_REPO_KEY_PACKAGE="${NVIDIA_UBUNTU_REPO_URL}/cuda-keyring_1.0-1_all.deb"
+readonly NVIDIA_UBUNTU_REPO_CUDA_PIN="${NVIDIA_UBUNTU_REPO_URL}/cuda-ubuntu1804.pin"
+
+readonly -A DEFAULT_NVIDIA_DEBIAN_CUDA_URLS=(
+  [10.1]="${NVIDIA_BASE_DL_URL}/cuda/10.1/Prod/local_installers/cuda_10.1.243_418.87.00_linux.run"
+  [10.2]="${NVIDIA_BASE_DL_URL}/cuda/10.2/Prod/local_installers/cuda_10.2.89_440.33.01_linux.run"
+  [11.0]="${NVIDIA_BASE_DL_URL}/cuda/11.0.3/local_installers/cuda_11.0.3_450.51.06_linux.run"
+  [11.1]="${NVIDIA_BASE_DL_URL}/cuda/11.1.0/local_installers/cuda_11.1.0_455.23.05_linux.run"
+  [11.2]="${NVIDIA_BASE_DL_URL}/cuda/11.2.2/local_installers/cuda_11.2.2_460.32.03_linux.run"
+  [11.5]="${NVIDIA_BASE_DL_URL}/cuda/11.5.2/local_installers/cuda_11.5.2_495.29.05_linux.run"
+  [11.6]="${NVIDIA_BASE_DL_URL}/cuda/11.6.2/local_installers/cuda_11.6.2_510.47.03_linux.run"
+  [11.7]="${NVIDIA_BASE_DL_URL}/cuda/11.7.1/local_installers/cuda_11.7.1_515.65.01_linux.run"
+  [11.8]="${NVIDIA_BASE_DL_URL}/cuda/11.8.0/local_installers/cuda_11.8.0_520.61.05_linux.run")
+readonly DEFAULT_NVIDIA_DEBIAN_CUDA_URL=${DEFAULT_NVIDIA_DEBIAN_CUDA_URLS["${CUDA_VERSION_MAJOR}"]}
+NVIDIA_DEBIAN_CUDA_URL=$(get_metadata_attribute 'cuda-url' "${DEFAULT_NVIDIA_DEBIAN_CUDA_URL}")
+readonly NVIDIA_DEBIAN_CUDA_URL
+
 # Verify Secure boot
 SECURE_BOOT="disabled"
 SECURE_BOOT=$(mokutil --sb-state|awk '{print $2}')
@@ -106,26 +161,26 @@ function execute_with_retries() {
 }
 
 function install_spark_rapids() {
-  # local -r rapids_repo_url='https://repo1.maven.org/maven2/ai/rapids'
-  # local -r nvidia_repo_url='https://repo1.maven.org/maven2/com/nvidia'
-  # local -r dmlc_repo_url='https://repo.maven.apache.org/maven2/ml/dmlc'
+  local -r rapids_repo_url='https://repo1.maven.org/maven2/ai/rapids'
+  local -r nvidia_repo_url='https://repo1.maven.org/maven2/com/nvidia'
+  local -r dmlc_repo_url='https://repo.maven.apache.org/maven2/ml/dmlc'
 
-  # wget -nv --timeout=120 --tries=5 --retry-connrefused \
-  #   "${dmlc_repo_url}/xgboost4j-spark-gpu_2.12/${XGBOOST_VERSION}/xgboost4j-spark-gpu_2.12-${XGBOOST_VERSION}.jar" \
-  #   -P /usr/lib/spark/jars/
+  wget -nv --timeout=120 --tries=5 --retry-connrefused \
+    "${dmlc_repo_url}/xgboost4j-spark-gpu_2.12/${XGBOOST_VERSION}/xgboost4j-spark-gpu_2.12-${XGBOOST_VERSION}.jar" \
+    -P /usr/lib/spark/jars/
 
-  # wget -nv --timeout=120 --tries=5 --retry-connrefused \
-  #   "${dmlc_repo_url}/xgboost4j-gpu_2.12/${XGBOOST_VERSION}/xgboost4j-gpu_2.12-${XGBOOST_VERSION}.jar" \
-  #   -P /usr/lib/spark/jars/
+  wget -nv --timeout=120 --tries=5 --retry-connrefused \
+    "${dmlc_repo_url}/xgboost4j-gpu_2.12/${XGBOOST_VERSION}/xgboost4j-gpu_2.12-${XGBOOST_VERSION}.jar" \
+    -P /usr/lib/spark/jars/
 
 
-  # wget -nv --timeout=120 --tries=5 --retry-connrefused \
-  #   "${nvidia_repo_url}/rapids-4-spark_2.12/${SPARK_RAPIDS_VERSION}/rapids-4-spark_2.12-${SPARK_RAPIDS_VERSION}.jar" \
-  #   -P /usr/lib/spark/jars/
+  wget -nv --timeout=120 --tries=5 --retry-connrefused \
+    "${nvidia_repo_url}/rapids-4-spark_2.12/${SPARK_RAPIDS_VERSION}/rapids-4-spark_2.12-${SPARK_RAPIDS_VERSION}.jar" \
+    -P /usr/lib/spark/jars/
 
-  gsutil cp -vn gs://vidio-bigdata-prod/dataproc/initialization/rapids/xgboost4j-spark-gpu_2.12-${XGBOOST_VERSION}.jar /usr/lib/spark/jars/
-  gsutil cp -vn gs://vidio-bigdata-prod/dataproc/initialization/rapids/xgboost4j-gpu_2.12-${XGBOOST_VERSION}.jar /usr/lib/spark/jars/
-  gsutil cp -vn gs://vidio-bigdata-prod/dataproc/initialization/rapids/rapids-4-spark_2.12-${SPARK_RAPIDS_VERSION}.jar /usr/lib/spark/jars/
+  # gsutil cp -vn gs://vidio-bigdata-prod/dataproc/initialization/rapids/xgboost4j-spark-gpu_2.12-${XGBOOST_VERSION}.jar /usr/lib/spark/jars/
+  # gsutil cp -vn gs://vidio-bigdata-prod/dataproc/initialization/rapids/xgboost4j-gpu_2.12-${XGBOOST_VERSION}.jar /usr/lib/spark/jars/
+  # gsutil cp -vn gs://vidio-bigdata-prod/dataproc/initialization/rapids/rapids-4-spark_2.12-${SPARK_RAPIDS_VERSION}.jar /usr/lib/spark/jars/
 }
 
 function configure_spark() {
@@ -196,12 +251,12 @@ function install_nvidia_gpu_driver() {
 
     execute_with_retries "apt-get install -y -q 'linux-headers-$(uname -r)'"
 
-    readonly LOCAL_INSTALLER_DEB="cuda-repo-debian${DEBIAN_VERSION}-${CUDA_VERSION_MAJOR//./-}-local_${CUDA_VERSION}-${NVIDIA_DRIVER_VERSION}-1_amd64.deb"
-    curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
-      "https://developer.download.nvidia.com/compute/cuda/${CUDA_VERSION}/local_installers/${LOCAL_INSTALLER_DEB}" -o /tmp/local-installer.deb
-
-    dpkg -i /tmp/local-installer.deb
-    cp /var/cuda-repo-debian${DEBIAN_VERSION}-${CUDA_VERSION_MAJOR//./-}-local/cuda-*-keyring.gpg /usr/share/keyrings/
+    # readonly LOCAL_INSTALLER_DEB="cuda-repo-ubuntu1804-${CUDA_VERSION_MAJOR//./-}-local_${CUDA_VERSION}-${NVIDIA_DRIVER_VERSION}-1_amd64.deb"
+    # curl -fsSL --retry-connrefused --retry 3 --retry-max-time 5 \
+    #   "https://developer.download.nvidia.com/compute/cuda/${CUDA_VERSION}/local_installers/${LOCAL_INSTALLER_DEB}" -o /tmp/local-installer.deb
+    #
+    # dpkg -i /tmp/local-installer.deb
+    # cp /var/cuda-repo-ubuntu1804-${CUDA_VERSION_MAJOR//./-}-local/cuda-*-keyring.gpg /usr/share/keyrings/
 
     ## EXCEPTION
     if [[ ${DEBIAN_VERSION} == 12 ]]; then
@@ -218,12 +273,26 @@ function install_nvidia_gpu_driver() {
     fi
 
     ## EXCEPTION
-    if [[ ${DEBIAN_VERSION} == 12 ]]; then
-      execute_with_retries "apt-get install -y -q nvidia-kernel-open-dkms"
-    fi
+    # if [[ ${DEBIAN_VERSION} == 12 ]]; then
+    #   execute_with_retries "apt-get install -y -q nvidia-kernel-open-dkms"
+    # fi
+    #
+    # execute_with_retries "apt-get install -y -q --no-install-recommends cuda-drivers-${NVIDIA_DRIVER_VERSION_PREFIX}"
+    # execute_with_retries "apt-get install -y -q --no-install-recommends cuda-toolkit-${CUDA_VERSION_MAJOR//./-}"
 
-    execute_with_retries "apt-get install -y -q --no-install-recommends cuda-drivers-${NVIDIA_DRIVER_VERSION_PREFIX}"
-    execute_with_retries "apt-get install -y -q --no-install-recommends cuda-toolkit-${CUDA_VERSION_MAJOR//./-}"
+
+
+    curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
+      "${NVIDIA_UBUNTU_REPO_KEY_PACKAGE}" -o /tmp/cuda-keyring.deb
+    dpkg -i "/tmp/cuda-keyring.deb"
+
+    curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
+      "${NVIDIA_DEBIAN_GPU_DRIVER_URL}" -o driver.run
+    bash "./driver.run" --silent --install-libglvnd
+
+    curl -fsSL --retry-connrefused --retry 10 --retry-max-time 30 \
+      "${NVIDIA_DEBIAN_CUDA_URL}" -o cuda.run
+    bash "./cuda.run" --silent --toolkit --no-opengl-libs
 
     # enable a systemd service that updates kernel headers after reboot
     setup_systemd_update_headers
@@ -601,7 +670,15 @@ function check_os_and_secure_boot() {
 }
 
 
-function install_mamba() {
+function update_backports_url() {
+    DEBIAN_VERSION=$(lsb_release -r|awk '{print $2}') # 10 or 11
+
+    if [[ ${DEBIAN_VERSION} == 10 ]]; then
+      sed -i 's#deb.debian.org/debian buster-backports#archive.debian.org/debian buster-backports#g' /etc/apt/sources.list
+    fi
+}
+
+function install_rapidai() {
   readonly miniforge_version="23.1.0-1"
   readonly miniforge_sha256="cba9a744454039944480871ed30d89e4e51a944a579b461dd9af60ea96560886"
 
@@ -618,12 +695,17 @@ function install_mamba() {
   /opt/conda/mamba/bin/conda config --set always_yes yes --set changeps1 no
   /opt/conda/mamba/bin/conda info -a
   /opt/conda/mamba/bin/conda install mamba -c conda-forge
-  /opt/conda/mamba/bin/mamba install -c rapidsai -c conda-forge -c nvidia  rapids=24.04 cuda-version=11.8 -y
 
+  # /opt/conda/default/bin/conda config --add channels conda-forge
+  # /opt/conda/default/bin/conda update -n base --all
+  # /opt/conda/default/bin/conda install -n base mamba
+  # /opt/conda/dfeault/bin/conda install -n base conda-libmamba-solver
+  # /opt/conda/miniconda3/bin/mamba install -c rapidsai -c conda-forge -c nvidia  rapids=24.04 cuda-version=11.8 -y
 }
 
 
 function main() {
+  update_backports_url
   check_os_and_secure_boot
   if [[ "${OS_NAME}" == "rocky" ]]; then
     if dnf list kernel-devel-$(uname -r) && dnf list kernel-headers-$(uname -r); then
@@ -642,7 +724,7 @@ function main() {
     exit 1
   fi
 
-  install_mamba
+  install_rapidai
 
   for svc in resourcemanager nodemanager; do
     if [[ $(systemctl show hadoop-yarn-${svc}.service -p SubState --value) == 'running' ]]; then
