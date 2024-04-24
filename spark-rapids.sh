@@ -362,7 +362,7 @@ function download_agent(){
 }
 
 function install_agent_dependency(){
-  execute_with_retries "apt-get install python3-venv -y"
+  execute_with_retries "apt-get install python3-venv python3-dev -y"
   cd /opt/google/compute-gpu-monitoring/linux
   python3 -m venv venv
   venv/bin/pip install wheel
