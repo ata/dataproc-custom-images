@@ -198,7 +198,7 @@ spark.dynamicAllocation.enabled=false
 spark.sql.autoBroadcastJoinThreshold=10m
 spark.sql.files.maxPartitionBytes=512m
 # please update this config according to your application
-spark.task.resource.gpu.amount=0.25
+spark.task.resource.gpu.amount=1
 spark.kryo.registrator=com.nvidia.spark.rapids.GpuKryoRegistrator
 ###### END   : RAPIDS properties for Spark ${SPARK_VERSION} ######
 EOF
@@ -686,7 +686,7 @@ function install_rapidai() {
   readonly miniforge_version="23.1.0-1"
   readonly miniforge_sha256="cba9a744454039944480871ed30d89e4e51a944a579b461dd9af60ea96560886"
 
-  apt install -y libarchive13
+  execute_with_retries "apt install -y libarchive13"
 
 
   rm -rf /opt/conda/mamba
@@ -700,11 +700,29 @@ function install_rapidai() {
   /opt/conda/mamba/bin/conda info -a
   /opt/conda/mamba/bin/conda install mamba -c conda-forge
 
-  # /opt/conda/default/bin/conda config --add channels conda-forge
-  # /opt/conda/default/bin/conda update -n base --all
-  # /opt/conda/default/bin/conda install -n base mamba
-  # /opt/conda/dfeault/bin/conda install -n base conda-libmamba-solver
-  # /opt/conda/miniconda3/bin/mamba install -c rapidsai -c conda-forge -c nvidia  rapids=24.04 cuda-version=11.8 -y
+
+  cat > /root/rapids23.yaml <<EOF
+name: rapids23
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python >=3.8,<3.9
+  - pycodestyle
+  - numpy
+  - pandas
+  - scipy
+  - pandasql
+  - panel
+  - pyyaml
+  - matplotlib
+  - scikit-learn
+  - seaborn
+EOF
+  export PATH=/opt/conda/mamba/bin:/opt/conda/mamba/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  mamba env update -f /root/rapids23.yaml --prune
+  export PATH=/opt/conda/mamba/envs/rapids23/bin:$PATH
+  mamba install -c nvidia -c rapidsai cudf=23.4.1 cuml=23.4.1 dask-cudf=23.4.1
 }
 
 

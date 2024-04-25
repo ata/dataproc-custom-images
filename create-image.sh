@@ -15,7 +15,7 @@
 #     --no-external-ip
 
 python3 generate_custom_image.py \
-    --image-name rapids-debian11-5 \
+    --image-name rapids-debian11-6 \
     --dataproc-version 2.1.44-debian11 \
     --customization-script ./spark-rapids.sh  \
     --no-smoke-test \
