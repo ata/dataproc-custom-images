@@ -192,7 +192,7 @@ function configure_spark() {
 # query explain output won't show GPU operator, if user have doubt
 # they can uncomment the line before seeing the GPU plan explain, but AQE on gives user the best performance.
 spark.executor.resource.gpu.amount=1
-spark.plugins=com.nvidia.spark.SQLPlugin
+#spark.plugins=com.nvidia.spark.SQLPlugin # somehow make it not works
 spark.executor.resource.gpu.discoveryScript=/usr/lib/spark/scripts/gpu/getGpusResources.sh
 spark.dynamicAllocation.enabled=false
 spark.sql.autoBroadcastJoinThreshold=10m
@@ -683,46 +683,12 @@ function update_backports_url() {
 }
 
 function install_rapidai() {
-  readonly miniforge_version="23.1.0-1"
-  readonly miniforge_sha256="cba9a744454039944480871ed30d89e4e51a944a579b461dd9af60ea96560886"
-
-  execute_with_retries "apt install -y libarchive13"
-
-
-  rm -rf /opt/conda/mamba
-
-  wget -nv https://github.com/conda-forge/miniforge/releases/download/${miniforge_version}/Mambaforge-${miniforge_version}-Linux-x86_64.sh -O miniforge.sh
-  echo "${miniforge_sha256} miniforge.sh" > miniforge.sha256
-  export HOME=/root
-  bash miniforge.sh -b -p /opt/conda/mamba
-  /opt/conda/mamba/bin/conda update --yes -n base -c defaults conda
-  /opt/conda/mamba/bin/conda config --set always_yes yes --set changeps1 no
-  /opt/conda/mamba/bin/conda info -a
-  /opt/conda/mamba/bin/conda install mamba -c conda-forge
-
-
-  cat > /root/rapids23.yaml <<EOF
-name: rapids23
-channels:
-  - conda-forge
-  - defaults
-dependencies:
-  - python >=3.8,<3.9
-  - pycodestyle
-  - numpy
-  - pandas
-  - scipy
-  - pandasql
-  - panel
-  - pyyaml
-  - matplotlib
-  - scikit-learn
-  - seaborn
-EOF
-  export PATH=/opt/conda/mamba/bin:/opt/conda/mamba/condabin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-  mamba env update -f /root/rapids23.yaml --prune
-  export PATH=/opt/conda/mamba/envs/rapids23/bin:$PATH
-  mamba install -c nvidia -c rapidsai cudf=23.4.1 cuml=23.4.1 dask-cudf=23.4.1
+    export PATH=/opt/conda/miniconda3/bin:$PATH
+    conda config --set channel_priority flexible
+    mamba install -c nvidia -c rapidsai -c default cudf=23.4.1 cuml=23.4.1 dask-cudf=23.4.1
+    pip install spark-rapids-ml
+    mkdir /home/.cupy
+    chmod 777 /home/.cupy
 }
 
 
